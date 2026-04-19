@@ -197,6 +197,10 @@ type QueryOptions struct {
 
 // Query is the underlay of GetVersions, GetVersion and GetPlatform.
 func (s *service) Query(ctx context.Context, opts QueryOptions) ([]Version, error) {
+	return s.query(ctx, opts, false)
+}
+
+func (s *service) query(ctx context.Context, opts QueryOptions, retried bool) ([]Version, error) {
 	if opts.Hostname == "" || opts.Namespace == "" || opts.Type == "" {
 		return nil, errors.New("invalid options")
 	}
@@ -334,12 +338,19 @@ func (s *service) Query(ctx context.Context, opts QueryOptions) ([]Version, erro
 
 	const wait = 500 * time.Millisecond
 
+	// If we already retried after a sync and still hit the same class of
+	// miss, bail out — the upstream simply doesn't have what the caller asked
+	// for and re-syncing would loop.
+	if retried {
+		return queried, err
+	}
+
 	switch {
 	case errors.Is(err, ErrPlatformNotFound):
 		// Wait a while to get the latest platform.
 		if s.isSyncing(path.Join(opts.Hostname, opts.Namespace, opts.Type, opts.Version, opts.OS, opts.Arch)) {
 			time.Sleep(wait)
-			return s.Query(ctx, opts)
+			return s.query(ctx, opts, true)
 		}
 
 		// Otherwise, sync the platform.
@@ -347,13 +358,13 @@ func (s *service) Query(ctx context.Context, opts QueryOptions) ([]Version, erro
 			opts.Hostname, opts.Namespace, opts.Type, opts.Version, opts.OS, opts.Arch)
 		if err == nil {
 			runtime.Gosched()
-			return s.Query(ctx, opts)
+			return s.query(ctx, opts, true)
 		}
 	case errors.Is(err, ErrPlatformsIncomplete):
 		// Wait a while to get the full platforms.
 		if s.isSyncing(path.Join(opts.Hostname, opts.Namespace, opts.Type, opts.Version)) {
 			time.Sleep(wait)
-			return s.Query(ctx, opts)
+			return s.query(ctx, opts, true)
 		}
 
 		// Otherwise, sync all platforms.
@@ -361,13 +372,28 @@ func (s *service) Query(ctx context.Context, opts QueryOptions) ([]Version, erro
 			opts.Hostname, opts.Namespace, opts.Type, opts.Version)
 		if err == nil {
 			runtime.Gosched()
-			return s.Query(ctx, opts)
+			return s.query(ctx, opts, true)
+		}
+	case errors.Is(err, ErrVersionNotFound):
+		// The typed bucket exists but the requested version bucket does not.
+		// This happens when upstream released a new version after the last
+		// sync — trigger a refresh of the version list.
+		if s.isSyncing(path.Join(opts.Hostname, opts.Namespace, opts.Type)) {
+			time.Sleep(wait)
+			return s.query(ctx, opts, true)
+		}
+
+		err = s.syncVersions(ctx,
+			opts.Hostname, opts.Namespace, opts.Type)
+		if err == nil {
+			runtime.Gosched()
+			return s.query(ctx, opts, true)
 		}
 	case errors.Is(err, ErrTypedNotFound):
 		// Wait a while to get the latest versions.
 		if s.isSyncing(path.Join(opts.Hostname, opts.Namespace, opts.Type)) {
 			time.Sleep(wait)
-			return s.Query(ctx, opts)
+			return s.query(ctx, opts, true)
 		}
 
 		// Otherwise, sync versions.
@@ -375,7 +401,7 @@ func (s *service) Query(ctx context.Context, opts QueryOptions) ([]Version, erro
 			opts.Hostname, opts.Namespace, opts.Type)
 		if err == nil {
 			runtime.Gosched()
-			return s.Query(ctx, opts)
+			return s.query(ctx, opts, true)
 		}
 	}
 

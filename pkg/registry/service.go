@@ -106,7 +106,7 @@ func (h Host) Provider(ctx context.Context) Provider {
 func (p Provider) GetVersions(ctx context.Context, namespace, type_ string, since ...time.Time) ([]byte, error) {
 	rq := httpCli.Request()
 	if len(since) != 0 && !since[0].IsZero() {
-		rq = rq.WithHeader("If-Modified-Since", since[0].Format(http.TimeFormat))
+		rq = rq.WithHeader("If-Modified-Since", since[0].UTC().Format(http.TimeFormat))
 	}
 
 	r := rq.GetWithContext(ctx,
@@ -165,7 +165,7 @@ func (p Provider) GetPlatform(
 ) ([]byte, error) {
 	rq := httpCli.Request()
 	if len(since) != 0 && !since[0].IsZero() {
-		rq = rq.WithHeader("If-Modified-Since", since[0].Format(http.TimeFormat))
+		rq = rq.WithHeader("If-Modified-Since", since[0].UTC().Format(http.TimeFormat))
 	}
 
 	r := rq.GetWithContext(ctx,
@@ -215,7 +215,7 @@ func (h Host) Module(ctx context.Context) Module {
 func (m Module) GetVersions(ctx context.Context, namespace, name, system string, since ...time.Time) ([]byte, error) {
 	rq := httpCli.Request()
 	if len(since) != 0 && !since[0].IsZero() {
-		rq = rq.WithHeader("If-Modified-Since", since[0].Format(http.TimeFormat))
+		rq = rq.WithHeader("If-Modified-Since", since[0].UTC().Format(http.TimeFormat))
 	}
 
 	r := rq.GetWithContext(ctx,
@@ -253,7 +253,7 @@ func (m Module) GetVersion(
 ) ([]byte, error) {
 	rq := httpCli.Request()
 	if len(since) != 0 && !since[0].IsZero() {
-		rq = rq.WithHeader("If-Modified-Since", since[0].Format(http.TimeFormat))
+		rq = rq.WithHeader("If-Modified-Since", since[0].UTC().Format(http.TimeFormat))
 	}
 
 	r := rq.GetWithContext(ctx,
